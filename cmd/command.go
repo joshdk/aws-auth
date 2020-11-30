@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/joshdk/aws-auth/config"
+	"github.com/joshdk/aws-auth/transformers"
 	"github.com/spf13/cobra"
 )
 
@@ -22,9 +24,42 @@ func Command(version string) *cobra.Command {
 		SilenceErrors: true,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
+			flagProfile, _ := cmd.Flags().GetString("profile")
+
+			// Load and parse the AWS config files.
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+
+			// Find a chain of transforms for obtaining profile credentials.
+			startCreds, transforms, err := transformers.Chain(cfg, flagProfile)
+			if err != nil {
+				return err
+			}
+
+			// Make all of the transforms needed to obtain those credentials.
+			endCreds, err := transformers.Transform(startCreds, transforms)
+			if err != nil {
+				return err
+			}
+
+			// Enrich credentials with identity information.
+			identity, err := transformers.Enrich(endCreds)
+			if err != nil {
+				return err
+			}
+
+			// Print environment variables for our new identity.
+			for key, value := range identity.Env() {
+				fmt.Printf("export %s=%q\n", key, value)
+			}
+
 			return nil
 		},
 	}
+
+	cmd.PersistentFlags().StringP("profile", "p", "default", "AWS profile to target")
 
 	return cmd
 }
