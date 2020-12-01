@@ -28,10 +28,12 @@ type User struct {
 type Role struct {
 	DurationSeconds int
 	ExternalID      string
+	MFAMessage      string
 	MFASerial       string
 	RoleARN         string
 	RoleSessionName string
 	SourceProfile   string
+	YubikeySlot     string
 }
 
 // sectionAsUser takes the given ini.Section and converts it to a User if all
@@ -63,10 +65,12 @@ func sectionAsRole(section *ini.Section) *Role {
 	// https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#using-aws-iam-roles
 	role := Role{
 		ExternalID:      section.Key("external_id").Value(),
+		MFAMessage:      section.Key("mfa_message").Value(),
 		MFASerial:       section.Key("mfa_serial").Value(),
 		RoleARN:         section.Key("role_arn").Value(),
 		RoleSessionName: section.Key("role_session_name").Value(),
 		SourceProfile:   section.Key("source_profile").Value(),
+		YubikeySlot:     section.Key("yubikey_slot").Value(),
 	}
 
 	// Use the given duration, or fall back to a 1 hour default.

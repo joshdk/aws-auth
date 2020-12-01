@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/joshdk/aws-auth/config"
+	"github.com/joshdk/aws-auth/mfa"
 )
 
 const (
@@ -47,6 +48,16 @@ func (s AssumeRoleTransform) Transform(creds *sts.Credentials) (*sts.Credentials
 		input.RoleSessionName = aws.String(value)
 	} else {
 		input.RoleSessionName = aws.String(defaultRoleSessionName)
+	}
+
+	if s.Role.MFASerial != "" {
+		// Prompt the user to enter an MFA code.
+		code, err := mfa.Prompt(s.Role.MFASerial, s.Role.MFAMessage, s.Role.YubikeySlot)
+		if err != nil {
+			return nil, err
+		}
+
+		input.TokenCode = aws.String(code)
 	}
 
 	// Create a session with the input credentials that will be used in the
