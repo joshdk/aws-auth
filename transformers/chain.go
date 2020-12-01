@@ -26,7 +26,7 @@ func Chain(cfg *config.Config, profile string) (*sts.Credentials, []Transformer,
 
 func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.Credentials, []Transformer, error) {
 	// Look up the named profile. Maybe it's a user? Maybe it's a role?
-	maybeUser, maybeRole := cfg.Profile(profile)
+	maybeUser, maybeRole, maybeSession := cfg.Profile(profile)
 
 	switch {
 	case maybeUser != nil:
@@ -41,7 +41,7 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		return &creds, nil, nil
 
 	case maybeRole != nil:
-		// We have found a role. Check that we have not visited this role
+		// We have found a role. Check that we have not visited this profile
 		// already, as that would mean that there is a circular profile
 		// reference (mis)configured.
 		if _, found := seen[maybeRole.SourceProfile]; found {
@@ -63,6 +63,34 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		// the chain.
 		transform := AssumeRoleTransform{
 			Role: maybeRole,
+		}
+		chain = append(chain, transform)
+
+		return creds, chain, err
+
+	case maybeSession != nil:
+		// We have found a session. Check that we have not visited this profile
+		// already, as that would mean that there is a circular profile
+		// reference (mis)configured.
+		if _, found := seen[maybeSession.SourceProfile]; found {
+			return nil, nil, fmt.Errorf("profile %s references recursive source profile %s", profile, maybeSession.SourceProfile)
+		}
+		seen[maybeSession.SourceProfile] = struct{}{}
+
+		// Recursively follow the source profile reference, to walk the profile
+		// "chain".
+		creds, chain, err := chain(cfg, maybeSession.SourceProfile, seen)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "unknown source profile") {
+				return nil, nil, fmt.Errorf("profile %s references %s", profile, err.Error())
+			}
+			return nil, nil, err
+		}
+
+		// Create an assume-role transformer for this profile, and add it to
+		// the chain.
+		transform := SessionTokenTransform{
+			Session: maybeSession,
 		}
 		chain = append(chain, transform)
 

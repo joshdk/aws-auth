@@ -21,7 +21,7 @@ type AssumeRoleTransform struct {
 }
 
 // Transform takes the input sts.Credentials and the internal config.Role and
-// performs and AssumeRole. The sts.Credentials for the assumed role are
+// performs an AssumeRole. The sts.Credentials for the assumed role are
 // returned.
 func (s AssumeRoleTransform) Transform(creds *sts.Credentials) (*sts.Credentials, error) {
 	// Pack the input struct with appropriate data. Fields that have a
@@ -73,7 +73,7 @@ func (s AssumeRoleTransform) Transform(creds *sts.Credentials) (*sts.Credentials
 		return nil, err
 	}
 
-	// Perform the actual assume role.
+	// Perform the actual API call.
 	result, err := sts.New(sess).AssumeRole(&input)
 	if err != nil {
 		return nil, err
