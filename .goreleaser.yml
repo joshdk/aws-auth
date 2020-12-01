@@ -1,0 +1,51 @@
+project_name: aws-auth
+
+builds:
+  - id: aws-auth
+    binary: aws-auth
+
+    goos:
+      - darwin
+      - windows
+      - linux
+
+    goarch:
+      - amd64
+      - 386
+
+    ignore:
+      - goos: darwin
+        goarch: 386
+
+    flags:
+      - -trimpath
+
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+
+    env:
+      - CGO_ENABLED=0
+
+    hooks:
+      pre: go mod tidy
+      post: upx --best --ultra-brute "{{ .Path }}"
+
+archives:
+  - id: aws-auth
+    builds: [aws-auth]
+    name_template: "{{.ProjectName}}-{{.Os}}-{{.Arch}}"
+
+    format_overrides:
+      - goos: windows
+        format: zip
+
+release:
+  name_template: "{{.Version}} Release"
+  prerelease: auto
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  skip: true
