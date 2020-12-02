@@ -9,6 +9,9 @@ import "github.com/joshdk/aws-auth/cmd"
 // version holds the version string. Replaced at build-time with -ldflags.
 var version = "development"
 
+// date holds the build date. Replaced at build-time with -ldflags.
+var date = "-"
+
 func main() {
-	cmd.Execute(version)
+	cmd.Execute(version, date)
 }

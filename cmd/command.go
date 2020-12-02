@@ -16,7 +16,7 @@ import (
 // Command defines the aws-auth CLI root.
 //
 // $ aws-auth
-func Command(version string) *cobra.Command {
+func Command(version, date string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "aws-auth",
 		Version:       version,
@@ -59,6 +59,8 @@ func Command(version string) *cobra.Command {
 		},
 	}
 
+	cmd.SetVersionTemplate(versionTemplate(version, date))
+
 	cmd.PersistentFlags().StringP("profile", "p", "default", "AWS profile to target")
 
 	return cmd
@@ -66,10 +68,22 @@ func Command(version string) *cobra.Command {
 
 // Execute handles the CLI and runs it to completion. This function does not
 // return.
-func Execute(version string) {
-	if err := Command(version).Execute(); err != nil {
+func Execute(version, date string) {
+	if err := Command(version, date).Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "aws-auth: %v\n", err)
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+// versionTemplate formats the command output when using the --version flag.
+func versionTemplate(version, date string) string {
+	return fmt.Sprintf(
+		"version: %s\n"+
+			"date:    %s\n"+
+			"author:  Josh Komoroske\n"+
+			"license: MIT\n"+
+			"github:  https://github.com/joshdk/aws-auth\n",
+		version, date,
+	)
 }

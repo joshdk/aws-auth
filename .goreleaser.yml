@@ -17,13 +17,14 @@ builds:
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
+      - -X main.date={{.Date}}
 
     env:
       - CGO_ENABLED=0
 
     hooks:
       pre: go mod tidy
-      post: upx --best --ultra-brute "{{ .Path }}"
+      post: upx --best --ultra-brute "{{.Path}}"
 
 archives:
   - id: aws-auth
