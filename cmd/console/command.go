@@ -21,7 +21,8 @@ func Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "console",
-		Short: "aws-auth console - Generate an AWS Console login URL",
+		Short: "Generate an AWS Console login URL",
+		Long:  "aws-auth console - Generate an AWS Console login URL",
 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flagBrowser, _ := cmd.Flags().GetBool("browser")
