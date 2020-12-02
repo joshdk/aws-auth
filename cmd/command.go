@@ -20,7 +20,8 @@ import (
 func Command(version, date string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "aws-auth",
-		Short:         "aws-auth - Manage AWS credential for a range of workflows",
+		Short:         "Manage AWS credential for a range of workflows",
+		Long:          "aws-auth - Manage AWS credential for a range of workflows",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -63,7 +64,7 @@ func Command(version, date string) *cobra.Command {
 
 	cmd.SetVersionTemplate(versionTemplate(version, date))
 
-	cmd.PersistentFlags().StringP("profile", "p", "default", "AWS profile to target")
+	cmd.PersistentFlags().StringP("profile", "p", "default", "config profile to target")
 
 	cmd.AddCommand(
 		console.Command(),
