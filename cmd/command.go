@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/joshdk/aws-auth/cmd/console"
 	"github.com/joshdk/aws-auth/config"
 	"github.com/joshdk/aws-auth/transformers"
 	"github.com/spf13/cobra"
@@ -19,6 +20,7 @@ import (
 func Command(version, date string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "aws-auth",
+		Short:         "aws-auth - Manage AWS credential for a range of workflows",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -62,6 +64,10 @@ func Command(version, date string) *cobra.Command {
 	cmd.SetVersionTemplate(versionTemplate(version, date))
 
 	cmd.PersistentFlags().StringP("profile", "p", "default", "AWS profile to target")
+
+	cmd.AddCommand(
+		console.Command(),
+	)
 
 	return cmd
 }
