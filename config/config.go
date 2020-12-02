@@ -36,6 +36,14 @@ type Role struct {
 	YubikeySlot     string
 }
 
+type Session struct {
+	DurationSeconds int
+	MFAMessage      string
+	MFASerial       string
+	SourceProfile   string
+	YubikeySlot     string
+}
+
 // sectionAsUser takes the given ini.Section and converts it to a User if all
 // of the required fields are present.
 func sectionAsUser(section *ini.Section) *User {
@@ -91,30 +99,65 @@ func sectionAsRole(section *ini.Section) *Role {
 	}
 }
 
+// sectionAsSession takes the given ini.Section and converts it to a Session if
+// all of the required fields are present.
+func sectionAsSession(section *ini.Section) *Session {
+	// Pack section values into struct.
+	session := Session{
+		MFAMessage:    section.Key("mfa_message").Value(),
+		MFASerial:     section.Key("mfa_serial").Value(),
+		SourceProfile: section.Key("source_profile").Value(),
+		YubikeySlot:   section.Key("yubikey_slot").Value(),
+	}
+
+	// Use the given duration, or fall back to a 1 hour default.
+	if duration, err := section.Key("duration_seconds").Int(); err == nil {
+		session.DurationSeconds = duration
+	} else {
+		session.DurationSeconds = 3600 // 1 hour
+	}
+
+	// Verify that required fields are present.
+	switch {
+	case session.SourceProfile == "":
+		return nil
+	default:
+		return &session
+	}
+}
+
 // Profile finds the named profile, and returns only one of either a User
-// (which contains credentials), or a Role (which describes how to derive
-// credentials). In the event that the named profile does not exist (or is
-// otherwise misconfigured), both return values will be nil.
-func (c *Config) Profile(name string) (*User, *Role) {
+// (which contains credentials), a Role (which describes how to derive
+// credentials using assume-role), or a Session (which describes how to derive
+// credentials using get-session-token). In the event that the named profile
+// does not exist (or is otherwise misconfigured), all return values will be
+// nil.
+func (c *Config) Profile(name string) (*User, *Role, *Session) {
 	section, found := c.profile(name)
 
 	// Section is missing altogether.
 	if !found {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Section contains valid User settings.
 	if user := sectionAsUser(section); user != nil {
-		return user, nil
+		return user, nil, nil
 	}
 
 	// Section contains valid Role settings.
 	if role := sectionAsRole(section); role != nil {
-		return nil, role
+		return nil, role, nil
+	}
+
+	// Section contains valid Session settings. This check must be done after
+	// the check for a Role, as a Role config is also a valid Session config.
+	if session := sectionAsSession(section); session != nil {
+		return nil, nil, session
 	}
 
 	// Section doesn't contain any valid settings.
-	return nil, nil
+	return nil, nil, nil
 }
 
 // profile looks up the given section name from the AWS config/credentials
