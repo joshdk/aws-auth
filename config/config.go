@@ -5,10 +5,13 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"gopkg.in/ini.v1"
 )
@@ -34,6 +37,8 @@ type Role struct {
 	ExternalID      string
 	MFAMessage      string
 	MFASerial       string
+	Policy          string
+	PolicyARNs      []string
 	RoleARN         string
 	RoleSessionName string
 	SourceProfile   string
@@ -72,7 +77,7 @@ func sectionAsUser(section *ini.Section) *User {
 
 // sectionAsRole takes the given ini.Section and converts it to a Role if all
 // of the required fields are present.
-func sectionAsRole(section *ini.Section) *Role {
+func sectionAsRole(section *ini.Section) (*Role, error) {
 	// Pack section values into struct.
 	// https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#using-aws-iam-roles
 	role := Role{
@@ -85,6 +90,14 @@ func sectionAsRole(section *ini.Section) *Role {
 		YubikeySlot:     section.Key("yubikey_slot").Value(),
 	}
 
+	// Verify that required fields are present.
+	switch {
+	case role.RoleARN == "":
+		return nil, nil
+	case role.SourceProfile == "":
+		return nil, nil
+	}
+
 	// Use the given duration, or fall back to a 1 hour default.
 	if duration, err := section.Key("duration_seconds").Int(); err == nil {
 		role.DurationSeconds = duration
@@ -92,15 +105,15 @@ func sectionAsRole(section *ini.Section) *Role {
 		role.DurationSeconds = 3600 // 1 hour
 	}
 
-	// Verify that required fields are present.
-	switch {
-	case role.RoleARN == "":
-		return nil
-	case role.SourceProfile == "":
-		return nil
-	default:
-		return &role
+	// Read, parse, and combine the referenced policies.
+	policyARNs, policy, err := loadPolicies(section.Key("policies").Strings(",")...)
+	if err != nil {
+		return nil, err
 	}
+
+	role.PolicyARNs = policyARNs
+	role.Policy = policy
+	return &role, nil
 }
 
 // sectionAsSession takes the given ini.Section and converts it to a Session if
@@ -150,7 +163,10 @@ func (c *Config) Profile(name string) (*User, *Role, *Session, error) {
 	}
 
 	// Section contains valid Role settings.
-	if role := sectionAsRole(section); role != nil {
+	if role, err := sectionAsRole(section); err != nil {
+		// Section contains a Role, but role configuration was invalid.
+		return nil, nil, nil, err
+	} else if role != nil {
 		return nil, role, nil, nil
 	}
 
@@ -244,4 +260,71 @@ func userHomeDir() string {
 
 	// *nix
 	return os.Getenv("HOME")
+}
+
+// loadPolicies takes a given list of policy references (either an ARN, or a
+// file path) and will return a list of all given ARNs, as well as a single IAM
+// policy document that is a combination of all given policy files.
+func loadPolicies(policyRefs ...string) ([]string, string, error) {
+	var documents [][]byte
+	var policyARNs []string
+	for _, policyRef := range policyRefs {
+		if policyRef == "" {
+			continue
+		}
+
+		// If a policy ARN was given, add it to the list of ARNs. Otherwise,
+		// assume it's a file and read the contents.
+		if strings.HasPrefix(policyRef, "arn:aws:iam:") {
+			policyARNs = append(policyARNs, policyRef)
+		} else {
+			document, err := ioutil.ReadFile(policyRef)
+			if err != nil {
+				return nil, "", err
+			}
+			documents = append(documents, document)
+		}
+	}
+
+	// Combine all policy documents into one.
+	combined, err := combinePolicies(documents...)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return policyARNs, string(combined), nil
+}
+
+// combinePolicies takes a given list of JSON-encoded IAM policy documents, and
+// returns a new policy document with all of the individual statements combined
+// in order.
+func combinePolicies(policies ...[]byte) ([]byte, error) {
+	// document is used for opaquely unmarshaling all policy statements.
+	type document struct {
+		Version    string        `json:"Version"`
+		Statements []interface{} `json:"Statement"`
+	}
+
+	var combined document
+	for _, policy := range policies {
+		// Unmarshal each policy document.
+		var doc document
+		if err := json.Unmarshal(policy, &doc); err != nil {
+			return nil, err
+		}
+
+		// Add each contained statement to the combined policy.
+		combined.Version = doc.Version
+		for _, statement := range doc.Statements {
+			combined.Statements = append(combined.Statements, statement)
+		}
+	}
+
+	// Avoid returning a policy with no statements.
+	if len(combined.Statements) == 0 {
+		return nil, nil
+	}
+
+	// Return the JSON-encoded combined policy (non-indented to save bytes).
+	return json.Marshal(combined)
 }
