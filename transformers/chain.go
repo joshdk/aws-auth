@@ -6,7 +6,6 @@ package transformers
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -30,7 +29,13 @@ func Chain(cfg *config.Config, profile string) (*sts.Credentials, []Transformer,
 
 func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.Credentials, []Transformer, error) {
 	// Look up the named profile. Maybe it's a user? Maybe it's a role?
-	maybeUser, maybeRole, maybeSession := cfg.Profile(profile)
+	maybeUser, maybeRole, maybeSession, err := cfg.Profile(profile)
+	if err != nil {
+		return nil, nil, chainError{
+			profile: profile,
+			err:     err,
+		}
+	}
 
 	switch {
 	case maybeUser != nil:
@@ -49,7 +54,10 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		// already, as that would mean that there is a circular profile
 		// reference (mis)configured.
 		if _, found := seen[maybeRole.SourceProfile]; found {
-			return nil, nil, fmt.Errorf("profile %s references recursive source profile %s", profile, maybeRole.SourceProfile)
+			return nil, nil, chainError{
+				profile: profile,
+				err:     fmt.Errorf("recursive profile"),
+			}
 		}
 		seen[maybeRole.SourceProfile] = struct{}{}
 
@@ -57,10 +65,10 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		// "chain".
 		creds, chain, err := chain(cfg, maybeRole.SourceProfile, seen)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "unknown source profile") {
-				return nil, nil, fmt.Errorf("profile %s references %s", profile, err.Error())
+			return nil, nil, chainError{
+				profile: profile,
+				err:     err,
 			}
-			return nil, nil, err
 		}
 
 		// Create an assume-role transformer for this profile, and add it to
@@ -77,7 +85,10 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		// already, as that would mean that there is a circular profile
 		// reference (mis)configured.
 		if _, found := seen[maybeSession.SourceProfile]; found {
-			return nil, nil, fmt.Errorf("profile %s references recursive source profile %s", profile, maybeSession.SourceProfile)
+			return nil, nil, chainError{
+				profile: profile,
+				err:     fmt.Errorf("recursive profile"),
+			}
 		}
 		seen[maybeSession.SourceProfile] = struct{}{}
 
@@ -85,10 +96,10 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		// "chain".
 		creds, chain, err := chain(cfg, maybeSession.SourceProfile, seen)
 		if err != nil {
-			if strings.HasPrefix(err.Error(), "unknown source profile") {
-				return nil, nil, fmt.Errorf("profile %s references %s", profile, err.Error())
+			return nil, nil, chainError{
+				profile: profile,
+				err:     err,
 			}
-			return nil, nil, err
 		}
 
 		// Create an assume-role transformer for this profile, and add it to
@@ -99,11 +110,25 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		chain = append(chain, transform)
 
 		return creds, chain, err
+	}
 
+	panic("internal error constructing profile chain")
+}
+
+type chainError struct {
+	profile string
+	err     error
+}
+
+func (e chainError) Error() string {
+	return "profile chain " + e.error()
+}
+
+func (e chainError) error() string {
+	switch cerr := e.err.(type) {
+	case chainError:
+		return e.profile + " → " + cerr.error()
 	default:
-		// We have neither a user nor a role, so something went wrong. Either
-		// an unknown profile was requested, or a profile with misconfigured
-		// content was encountered.
-		return nil, nil, fmt.Errorf("unknown source profile %s", profile)
+		return e.profile + ": " + e.err.Error()
 	}
 }

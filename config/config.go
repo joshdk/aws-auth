@@ -136,32 +136,32 @@ func sectionAsSession(section *ini.Section) *Session {
 // credentials using get-session-token). In the event that the named profile
 // does not exist (or is otherwise misconfigured), all return values will be
 // nil.
-func (c *Config) Profile(name string) (*User, *Role, *Session) {
+func (c *Config) Profile(name string) (*User, *Role, *Session, error) {
 	section, found := c.profile(name)
 
 	// Section is missing altogether.
 	if !found {
-		return nil, nil, nil
+		return nil, nil, nil, fmt.Errorf("unknown profile")
 	}
 
 	// Section contains valid User settings.
 	if user := sectionAsUser(section); user != nil {
-		return user, nil, nil
+		return user, nil, nil, nil
 	}
 
 	// Section contains valid Role settings.
 	if role := sectionAsRole(section); role != nil {
-		return nil, role, nil
+		return nil, role, nil, nil
 	}
 
 	// Section contains valid Session settings. This check must be done after
 	// the check for a Role, as a Role config is also a valid Session config.
 	if session := sectionAsSession(section); session != nil {
-		return nil, nil, session
+		return nil, nil, session, nil
 	}
 
 	// Section doesn't contain any valid settings.
-	return nil, nil, nil
+	return nil, nil, nil, fmt.Errorf("invalid profile")
 }
 
 // profile looks up the given section name from the AWS config/credentials
