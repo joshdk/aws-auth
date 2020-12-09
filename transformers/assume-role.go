@@ -48,6 +48,16 @@ func (s AssumeRoleTransform) Transform(creds *sts.Credentials) (*sts.Credentials
 		input.SerialNumber = aws.String(value)
 	}
 
+	if value := s.Role.Policy; value != "" {
+		input.Policy = aws.String(value)
+	}
+
+	for _, value := range s.Role.PolicyARNs {
+		input.PolicyArns = append(input.PolicyArns, &sts.PolicyDescriptorType{
+			Arn: aws.String(value),
+		})
+	}
+
 	if value := s.Role.RoleSessionName; value != "" {
 		input.RoleSessionName = aws.String(value)
 	} else {
