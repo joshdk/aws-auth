@@ -53,6 +53,14 @@ type Session struct {
 	YubikeySlot     string
 }
 
+type Federate struct {
+	DurationSeconds int
+	SourceProfile   string
+	Name            string
+	Policy          string
+	PolicyARNs      []string
+}
+
 // sectionAsUser takes the given ini.Section and converts it to a User if all
 // of the required fields are present.
 func sectionAsUser(section *ini.Section) *User {
@@ -116,6 +124,43 @@ func sectionAsRole(section *ini.Section) (*Role, error) {
 	return &role, nil
 }
 
+// sectionAsFederate takes the given ini.Section and converts it to a Federate
+// if all of the required fields are present.
+func sectionAsFederate(section *ini.Section) (*Federate, error) {
+	if !section.Key("federate").MustBool() {
+		return nil, nil
+	}
+
+	// Pack section values into struct.
+	federate := Federate{
+		Name:          section.Key("name").Value(),
+		SourceProfile: section.Key("source_profile").Value(),
+	}
+
+	// Verify that required fields are present.
+	switch {
+	case federate.SourceProfile == "":
+		return nil, nil
+	}
+
+	// Use the given duration, or fall back to a 1 hour default.
+	if duration, err := section.Key("duration_seconds").Int(); err == nil {
+		federate.DurationSeconds = duration
+	} else {
+		federate.DurationSeconds = 3600 // 1 hour
+	}
+
+	// Read, parse, and combine the referenced policies.
+	policyARNs, policy, err := loadPolicies(section.Key("policies").Strings(",")...)
+	if err != nil {
+		return nil, err
+	}
+
+	federate.PolicyARNs = policyARNs
+	federate.Policy = policy
+	return &federate, nil
+}
+
 // sectionAsSession takes the given ini.Section and converts it to a Session if
 // all of the required fields are present.
 func sectionAsSession(section *ini.Section) *Session {
@@ -143,41 +188,50 @@ func sectionAsSession(section *ini.Section) *Session {
 	}
 }
 
-// Profile finds the named profile, and returns only one of either a User
-// (which contains credentials), a Role (which describes how to derive
-// credentials using assume-role), or a Session (which describes how to derive
-// credentials using get-session-token). In the event that the named profile
-// does not exist (or is otherwise misconfigured), all return values will be
-// nil.
-func (c *Config) Profile(name string) (*User, *Role, *Session, error) {
+// Profile finds the named profile, and returns only one of either:
+// User - Contains credentials.
+// Role - Describes how to derive credentials using assume-role.
+// Session - Describes how to derive credentials using get-session-token.
+// Federate - Describes how to derive credentials using get-federation-token.
+// In the event that the named profile does not exist (or is otherwise
+// misconfigured), an error is returned.
+func (c *Config) Profile(name string) (*User, *Role, *Session, *Federate, error) {
 	section, found := c.profile(name)
 
 	// Section is missing altogether.
 	if !found {
-		return nil, nil, nil, fmt.Errorf("unknown profile")
+		return nil, nil, nil, nil, fmt.Errorf("unknown profile")
 	}
 
-	// Section contains valid User settings.
+	// Section contains a User config.
 	if user := sectionAsUser(section); user != nil {
-		return user, nil, nil, nil
+		return user, nil, nil, nil, nil
 	}
 
-	// Section contains valid Role settings.
+	// Section contains a Federate config.
+	if federate, err := sectionAsFederate(section); err != nil {
+		// Federate configuration was somehow invalid.
+		return nil, nil, nil, nil, err
+	} else if federate != nil {
+		return nil, nil, nil, federate, nil
+	}
+
+	// Section contains a Role config.
 	if role, err := sectionAsRole(section); err != nil {
-		// Section contains a Role, but role configuration was invalid.
-		return nil, nil, nil, err
+		// Role configuration was somehow invalid.
+		return nil, nil, nil, nil, err
 	} else if role != nil {
-		return nil, role, nil, nil
+		return nil, role, nil, nil, nil
 	}
 
-	// Section contains valid Session settings. This check must be done after
-	// the check for a Role, as a Role config is also a valid Session config.
+	// Section contains a Session config. This check must be done after the
+	// check for a Role, as a Role config is also a valid Session config.
 	if session := sectionAsSession(section); session != nil {
-		return nil, nil, session, nil
+		return nil, nil, session, nil, nil
 	}
 
-	// Section doesn't contain any valid settings.
-	return nil, nil, nil, fmt.Errorf("invalid profile")
+	// Section doesn't contain any valid configs.
+	return nil, nil, nil, nil, fmt.Errorf("invalid profile")
 }
 
 // profile looks up the given section name from the AWS config/credentials
