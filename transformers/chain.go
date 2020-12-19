@@ -29,7 +29,7 @@ func Chain(cfg *config.Config, profile string) (*sts.Credentials, []Transformer,
 
 func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.Credentials, []Transformer, error) {
 	// Look up the named profile. Maybe it's a user? Maybe it's a role?
-	maybeUser, maybeRole, maybeSession, err := cfg.Profile(profile)
+	maybeUser, maybeRole, maybeSession, maybeFederate, err := cfg.Profile(profile)
 	if err != nil {
 		return nil, nil, chainError{
 			profile: profile,
@@ -48,6 +48,37 @@ func chain(cfg *config.Config, profile string, seen map[string]struct{}) (*sts.C
 		}
 
 		return &creds, nil, nil
+
+	case maybeFederate != nil:
+		// We have found a federate. Check that we have not visited this profile
+		// already, as that would mean that there is a circular profile
+		// reference (mis)configured.
+		if _, found := seen[maybeFederate.SourceProfile]; found {
+			return nil, nil, chainError{
+				profile: profile,
+				err:     fmt.Errorf("recursive profile"),
+			}
+		}
+		seen[maybeFederate.SourceProfile] = struct{}{}
+
+		// Recursively follow the source profile reference, to walk the profile
+		// "chain".
+		creds, chain, err := chain(cfg, maybeFederate.SourceProfile, seen)
+		if err != nil {
+			return nil, nil, chainError{
+				profile: profile,
+				err:     err,
+			}
+		}
+
+		// Create a get-federation-token transformer for this profile, and add
+		// it to the chain.
+		transform := FederationTokenTransform{
+			Federate: maybeFederate,
+		}
+		chain = append(chain, transform)
+
+		return creds, chain, err
 
 	case maybeRole != nil:
 		// We have found a role. Check that we have not visited this profile
