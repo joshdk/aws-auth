@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	ykman "github.com/joshdk/ykmango"
 )
@@ -32,5 +33,6 @@ func Prompt(serial, message, yubikeySlot string) (string, error) {
 	}
 
 	// Read code from the line that the user types in.
-	return bufio.NewReader(os.Stdin).ReadString('\n')
+	code, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.TrimSpace(code), err
 }
