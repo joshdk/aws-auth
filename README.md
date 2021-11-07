@@ -1,3 +1,7 @@
+> ⚠️ This repo has been deprecated in favor of [joshdk/aws-console](https://github.com/joshdk/aws-console).  
+
+---
+
 [![Actions][github-actions-badge]][github-actions-link]
 [![License][license-badge]][license-link]
 [![Releases][github-release-badge]][github-release-link]
